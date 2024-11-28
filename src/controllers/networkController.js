@@ -627,77 +627,84 @@ exports.easy_post = async function(req, res) {
 }
 
 // Easy members auth POST
-exports.members = async function(req, res) {
+exports.members = async function (req, res) {
   const navigate =
     {
       active: 'networks',
       whence: '/controller/networks'
     }
 
-  let errors = null;
+  try {
+    if (req.method === 'POST') {
+      // Validate common fields
+      req.checkBody('id', 'Member ID is required').notEmpty();
+      req.sanitize('id').trim();
+      req.sanitize('id').escape();
 
-  if (req.method === 'POST') {
+      // Validate optional fields
+      if (req.body.auth !== undefined) {
+        req.checkBody('auth', 'Authorization state must be boolean').isBoolean();
+        req.sanitize('auth').trim();
+        req.sanitize('auth').escape();
+      }
 
-    req.checkBody('id', 'Member ID is required').notEmpty();
-    req.sanitize('id').trim();
-    req.sanitize('id').escape();
+      if (req.body.activeBridge !== undefined) {
+        req.checkBody('activeBridge', 'activeBridge state must be boolean').isBoolean();
+        req.sanitize('activeBridge').trim();
+        req.sanitize('activeBridge').escape();
+      }
 
-    if (req.body.auth) {
-      req.checkBody('auth', 'Authorization state must be boolean').isBoolean();
-      req.sanitize('auth').trim();
-      req.sanitize('auth').escape();
+      if (req.body.name !== undefined) {
+        req.sanitize('name').trim();
+        req.sanitize('name').escape();
+      }
 
-      errors = req.validationErrors();
+      // Collect validation errors
+      const errors = req.validationErrors();
+      if (errors) {
+        return res.status(400).json({ errors: errors.array() });
+      }
 
-      if (!errors) {
-        const auth =
-          {
-            authorized: req.body.auth
-          };
-
+      // Simultaneously process all provided fields
+      if (req.body.auth !== undefined) {
+        const auth = { authorized: req.body.auth };
         try {
-          const mem = await zt.member_object(req.params.nwid, req.body.id, auth);
+          await zt.member_object(req.params.nwid, req.body.id, auth);
         } catch (err) {
-          throw err;
+          console.error('Error processing auth:', err);
+          return res.status(500).json({ error: 'Failed to update authorization state' });
         }
       }
-    } else if (req.body.activeBridge) {
-      req.checkBody('activeBridge', 'activeBridge state must be boolean').isBoolean();
-      req.sanitize('activeBridge').trim();
-      req.sanitize('activeBridge').escape();
 
-      errors = req.validationErrors();
-
-      if (!errors) {
-        const activeBridge =
-          {
-            activeBridge: req.body.activeBridge
-          };
-
+      if (req.body.activeBridge !== undefined) {
+        const activeBridge = { activeBridge: req.body.activeBridge };
         try {
-          const mem = await zt.member_object(req.params.nwid, req.body.id, activeBridge);
+          await zt.member_object(req.params.nwid, req.body.id, activeBridge);
         } catch (err) {
-          throw err;
+          console.error('Error processing activeBridge:', err);
+          return res.status(500).json({ error: 'Failed to update activeBridge state' });
         }
       }
-    } else if (req.body.name) {
-      req.sanitize('name').trim();
-      req.sanitize('name').escape();
 
-      errors = req.validationErrors();
-
-      if (!errors) {
+      if (req.body.name !== undefined) {
         try {
-          const ret = await storage.setItem(req.body.id, req.body.name);
+          await storage.setItem(req.body.id, req.body.name);
         } catch (err) {
-          throw err;
+          console.error('Error processing name:', err);
+          return res.status(500).json({ error: 'Failed to update name' });
         }
       }
+
+      // Return success after processing all fields
+      return res.status(200).json({ success: true });
+    } else {
+      return res.redirect(`/controller/network/${nwid}#members`);
     }
-  } else { // GET
-    res.redirect("/controller/network/" + req.params.nwid + "#members");
+  } catch (err) {
+    console.error('Unexpected error:', err);
+    return res.status(500).json({ error: 'Internal server error', detail: err });
   }
-}
+};
 
 // Member delete GET or POST
 exports.member_delete = async function(req, res) {
